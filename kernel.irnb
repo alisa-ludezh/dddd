@@ -1,0 +1,598 @@
+{
+  "cells": [
+    {
+      "metadata": {
+        "_uuid": "729a04172d05553f3f170b927d1d1961ba2805be",
+        "_execution_state": "idle",
+        "trusted": true
+      },
+      "cell_type": "code",
+      "source": "## Importing packages\nh\n# This R environment comes with all of CRAN and many other helpful packages preinstalled.\n# You can see which packages are installed by checking out the kaggle/rstats docker image: \n# https://github.com/kaggle/docker-rstats\n\nlibrary(tidyverse, quietly = T, warn.conflicts = F) # metapackage with lots of helpful functions\nlibrary(mlr, quietly = T, warn.conflicts = F) # фреймворк для машинного обучения\nlibrary(stringr, quietly = T, warn.conflicts = F) # работа со строками\nlibrary(forcats, quietly = T, warn.conflicts = F) # работа с факторами\nlibrary(parallelMap, quietly = T, warn.conflicts = F) # распараллеливание задач\nlibrary(rpart.plot, quietly = T, warn.conflicts = F) # визуализация деревьев rpart\nlibrary(caret, quietly = T, warn.conflicts = F)\nlibrary(lubridate, quietly = T, warn.conflicts = F)\nlibrary(plyr, quietly = T, warn.conflicts = F)\nlibrary(dplyr, quietly = T, warn.conflicts = F)\nlibrary(ggplot2, quietly = T, warn.conflicts = F)\n## Running code\n\n# In a notebook, you can run a single code cell by clicking in the cell and then hitting \n# the blue arrow to the left, or by clicking in the cell and pressing Shift+Enter. In a script, \n# you can run code by highlighting the code you want to run and then clicking the blue arrow\n# at the bottom of this window.\n\n## Reading in files\n\n# You can access files from datasets you've added to this kernel in the \"../input/\" directory.\n# You can see the files added to this kernel by running the code below. \n\nlist.files(path = \"../input\")\n\n## Saving data\n\n# If you save any files or images, these will be put in the \"output\" directory. You \n# can see the output directory by committing and running your kernel (using the \n# Commit & Run button) and then checking out the compiled version of your kernel.",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "_uuid": "c16a33e5bcf8236571133a44028ac232c2f4faca"
+      },
+      "cell_type": "markdown",
+      "source": "## Загрузка данных и первичная предобработка"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "98f0d120247c25bb8a550cb3dc57597ceadf378d"
+      },
+      "cell_type": "code",
+      "source": "test_raw <- read.csv('../input/test.csv')\ntrain_raw <- read.csv('../input/train.csv')",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "d5da4f3039e812b93d0f2047ca2f38325e66796c"
+      },
+      "cell_type": "code",
+      "source": "# Посмотрим, что из себя представляют данные\nglimpse(train_raw)\nglimpse(test_raw)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "_uuid": "19f33e1fea103f7b8e18afec36a4d3ebaac5ae11"
+      },
+      "cell_type": "markdown",
+      "source": "В тестовой таблице данных на 3 столбца меньше - это целевая перемменная `count`, а также её слагаемые `casual` и `registered`\nВидно, что данные нужно преобразовать, в том числе добавить новые признаки. Так как эти манипуляции с необходимо будет проводить для обоих таблиц, создадим унифицированную функцию. В дальнейшем все преобразования, которые применяются к обоим таблицам, будем выносить в функции"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "88df82b70301f3a1f1cdd5073545451e87ee7c8d"
+      },
+      "cell_type": "code",
+      "source": "transform_dt <- function(dt) {\n    # add datetime features\n    dt$datetime <- ymd_hms(dt$datetime)\n    dt$hour <- hour(dt$datetime)\n    dt$day <- as.integer(day(dt$datetime))\n    dt$month <- as.integer(month(dt$datetime))\n    dt$year <- factor(year(dt$datetime))\n    dt$date <- date(dt$datetime)\n    dt$datetime <- as.character(date(dt$datetime))\n    # factors\n    dt$season <- factor(dt$season, labels = c(\"Spring\", \"Summer\", \"Fall\", \"Winter\"))\n    dt$weather <- factor(dt$weather, labels = c(\"Good\", \"Normal\", \"Bad\", \"Very Bad\"))\n    dt$holiday <- factor(dt$holiday)\n    dt$workingday <- factor(dt$workingday)\n    dt\n}",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "b73c3c874362ab9e7c5b89f5e614ea8c778101d9"
+      },
+      "cell_type": "code",
+      "source": "train <- transform_dt(train_raw)\ntest <- transform_dt(test_raw)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "6d8fc10d6178b2e8fbe0016c437dc155895ca1d6"
+      },
+      "cell_type": "code",
+      "source": "glimpse(test)\nglimpse(train)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "_uuid": "a1f711c0d8dd48564acdbb3e016d6fe687b0977b"
+      },
+      "cell_type": "markdown",
+      "source": "## Построение графиков"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "16825ea4c84b3ba996de0dc72b7475afd9694807"
+      },
+      "cell_type": "code",
+      "source": "season_summary <- ddply(train,.(date),\n                        summarise, count = mean(count))\nggplot(train, aes(x = date, y = count, colour='red')) +\n  geom_point(data = season_summary) +\n  geom_line(data = season_summary) +\nggtitle(\"Common rent plot\")",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "_uuid": "1d08107073e8a953503a6812c77b50d5b622018d"
+      },
+      "cell_type": "markdown",
+      "source": "В данных явно заметен повышающийся тренд, а также сезонность. \nВ пределах месяца целевая переменная изрядно варьируется. Это может быть \nсвязано как раз с погодными условиями или чередованием рабочих и выходных дней"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "24f64caeadadfedfbcf11482149309284ea6bfeb"
+      },
+      "cell_type": "code",
+      "source": "season_summary <- ddply(train,.(year,month),\n                        summarise, count = mean(count))\nggplot(train, aes(x = month, y = count, shape=year, colour = year)) +\n  geom_point(data = season_summary, aes(group = year)) +\n  geom_line(data = season_summary, aes(group = year)) +\n  scale_x_continuous('Month') +\n  scale_y_continuous(\"Count\") +\n  theme_minimal() +\n  ggtitle(\"Peaks of bike rents during the years.\\n\") + \n  theme(plot.title=element_text(size=15))",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "65d6b82f4d5dfb504fae5fe2546aff2432110ba8"
+      },
+      "cell_type": "code",
+      "source": "season_summary <- ddply(train,.(season,hour),\n                        summarise, count = mean(count))\nggplot(train, aes(x = hour, y = count, colour = season)) +\n  geom_point(data = season_summary, aes(group = season)) +\n  geom_line(data = season_summary, aes(group = season)) +\n  scale_x_continuous('Hour') +\n  scale_y_continuous(\"Count\") +\n  theme_minimal() +\n  #scale_color_discrete(breaks = 'Hour', labels = 'Hour')\n  ggtitle(\"Peaks of bike rents during the day.\\n\") + \n  theme(plot.title=element_text(size=15))",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "8adb64ea0beb0509da8ec6b5a350d9097058df8d"
+      },
+      "cell_type": "code",
+      "source": "season_summary <- ddply(train,.(season,temp),\n                        summarise, count = mean(count))\nggplot(train, aes(x = temp, y = count, colour = season)) +\n  geom_point(data = season_summary, aes(group = season)) +\n  geom_line(data = season_summary, aes(group = season)) +\n  scale_x_continuous('Temperature') +\n  scale_y_continuous(\"Count\") +\n  theme_minimal() +\n  ggtitle(\"Peaks of bike rents depending on temperature\\n\") + \n  theme(plot.title=element_text(size=15))",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "_uuid": "5352d5f734cea837513c6dfc2dec6c46c0f15693"
+      },
+      "cell_type": "markdown",
+      "source": "Судя по последнему графику, зимой в теплую погоду прокат велосипедов \nпользуется огромной популярностью.\nПосмотрим на распределение температуры по сезонам"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "13cdf8fe67ed23d2759fdc01ebda2499bf5ccc7d"
+      },
+      "cell_type": "code",
+      "source": "ggplot(train,aes(season, temp)) + \n  geom_boxplot(aes(color=season),alpha=0.2) + \n  scale_x_discrete('Season') +\n  scale_y_continuous(\"Temperature\") +\n  theme_minimal() +\n  ggtitle(\"Distribution of temperature.\\n\") + \n  theme(plot.title=element_text(size=15))\n",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "_uuid": "7d382a992caa8a5e6121c497c59490215b699668"
+      },
+      "cell_type": "markdown",
+      "source": "Температура различается довольно сильно. \nТеплых дней зимой мало, и в эти редкие дни люди стремятся арендовать велосипед"
+    },
+    {
+      "metadata": {
+        "_uuid": "25f395eae2192b87352adbcd49d375f236701256"
+      },
+      "cell_type": "markdown",
+      "source": "## Формирование выборок для обучения и тестирования"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "ae9a17999a5a073ddbdd74f44382adf17e77b205"
+      },
+      "cell_type": "code",
+      "source": "# подозрительно похожи друг на друга temp и atemp. Построим матрицу диаграмм рассеяния и\n# посчитаем корреляцию\ncar::scatterplotMatrix(~ temp + atemp + count, data=train)\nwith(train, cor.test(temp, atemp)) ",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "_uuid": "642d7ba65e38243c8bf9c8ff96c22d1b617a5431"
+      },
+      "cell_type": "markdown",
+      "source": "#### Корреляция 0,98! Необходимо удалить один из столбцов, чтобы в модели не было линейно зависимых столбцов. Удалим `atemp`\n### Также выбросим из обучающей выборки около-целевые признаки `casual` и `registered`. На них нельзя обучаться,  потому что в тестовой выборке у нас их нет\n### А также текстовый столбец `datetime` из обоих таблиц\n### Кроме того, метрика которая используется в этом соревновании - rmsle, средняя квадратичная ошибка разности логарифмов предсказанного и истинного значений, так что логарифмируем значения целевой функции"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "86987018a0c8e33084da6dc16d3693db0c49670e"
+      },
+      "cell_type": "code",
+      "source": "train %>% select(registered, casual) -> over_reatures\ntrain %>% select(- registered, - casual, -date, -datetime, - atemp) -> train\n\ntest %>% select(-date, -datetime, - atemp) -> test\n\n# Convert the target feature using a log(x+1) transformation and optimize w.r.t. rmse later (equivalent to optimizing rmsle).\ntrain$count <- log1p(train$count)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "487a72319ad28b68b907f0526778dda05cc4ebb1"
+      },
+      "cell_type": "code",
+      "source": "train$count <- log1p(train$count)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "_uuid": "9a8d9116bb7d43533ae12c065928d3cbc020225d"
+      },
+      "cell_type": "markdown",
+      "source": "## Первая модель"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "a680adeacbe1986077b82d38a1cf14a2f4397364"
+      },
+      "cell_type": "code",
+      "source": "# Создание задачи для обучения (learning task) ---- \nbike_share_task <- makeRegrTask(id = \"Прокат велосипедов\",\n                                 data = train,\n                                 target = \"count\")\nprint(bike_share_task)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "b5231166b78d948c0451ed456a5116a7e863614c"
+      },
+      "cell_type": "code",
+      "source": "# создание ученика (learner) ----\nlrn_lm <- makeLearner(\"regr.lm\", id = \"Линейная регрессия\")",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "4a931d69ad12b7ad3b7b94743f53421b17f3ab9a"
+      },
+      "cell_type": "code",
+      "source": "# Разбиение на подвыборки\nset.seed(123) # для воспроизводимости\nrows_n <- getTaskSize(bike_share_task)\nrows_train <- sample(rows_n, size = rows_n * 0.7)\nrows_test <- base::setdiff(1:rows_n, rows_train)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "4463b3f066329ca323153d8c6d2b710db7f6ae34"
+      },
+      "cell_type": "code",
+      "source": "# обучение модели (на обучающей выборке) - в лекции опечатка\nm_lm <- mlr::train(lrn_lm, bike_share_task, subset = rows_train)\nm_lm %>% \n  getLearnerModel() %>%\n  summary()",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "a6b21c5a7ac5d6c755953fe45570a4ab4911f50d"
+      },
+      "cell_type": "code",
+      "source": "# Делаем прогноз на тестовой выборке\n\npred_lm <- predict(m_lm, \n                       task = bike_share_task, \n                       subset = rows_test)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "294560ce77e029b978bb1d707dfa803b43cc79e9"
+      },
+      "cell_type": "code",
+      "source": "# Сформируем список метрик и посчитаем их\n\nreg_ms <- list(rmse, mape, mae)\n\nperformance(pred_lm,\n            measures = reg_ms) %>%\n  round(2)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "_uuid": "da5158aaba6affffcc62c759992694747f9f7c7a"
+      },
+      "cell_type": "markdown",
+      "source": "Это первый бенчмарк.\nМожно заметить, посмотрев на коэффициенты регрессии: очень много ошибок.\nМодель неверно посчитала положительно коррелирующими факторами `weatherVeryBad`, `humidity`, `windspeed`\nА отрицательно коррелирующими `seasonSummer`, `seasonFall`, `seasonWinter`, `holiday1`\n> Adjusted R-squared:  0.4017 \n\nэто значит, что почти половина дисперсии не объяснена моделью"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "350d84bc6a869b80b0331018796286d534b4cd62"
+      },
+      "cell_type": "code",
+      "source": "plotLearnerPrediction(lrn_lm, task = bike_share_task,\n                      features = c(\"hour\", \"month\"),\n                      measures = mape)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "_uuid": "d971c1214f20af06464e1eab278842c5f88a9d01"
+      },
+      "cell_type": "markdown",
+      "source": "## Доработка модели"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "fba5aee1371e19ad1bfd921df68cc487abbdd287"
+      },
+      "cell_type": "code",
+      "source": "# Сформируем автоматический счетчик метрик\nbike_rdesc <- makeResampleDesc(method = \"Holdout\", \n                              split = 0.8, \n                              stratify.cols = \"season\")",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "0ff8d44d9a2a75763ee20ba45db2bfee3e58b98f"
+      },
+      "cell_type": "code",
+      "source": "set.seed(123)\nresample(learner = lrn_lm, \n         resampling = bike_rdesc, \n         task = bike_share_task,\n         measures = reg_ms)               ",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "cb2ae224afb127e5d5142eca8a0945210d699fa3"
+      },
+      "cell_type": "code",
+      "source": "listLearners(obj = \"regr\") %>%\n  select(name, class) %>% \n  arrange(str_length(name)) %>%\n  arrange(name)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "4c6146d7f016b55b0648e95ebe8e64a34e47af09"
+      },
+      "cell_type": "code",
+      "source": "bike_learners <- makeLearners(\n  c(\"lm\", \"glmnet\", \"nnet\", \"h2o.gbm\", \"pcr\", \"svm\"),\n  ids = c(\"lm\", \"glmnet\", \"nnet\", \"h2o.gbm\", \"pcr\", \"svm\"),\n  type = \"regr\")",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "136ae70754a3a135aeed1fc9b704fe5700299c96"
+      },
+      "cell_type": "code",
+      "source": "bike_sharing_models <- bike_learners %>%\n  lapply(mlr::train, task = bike_share_task)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "987de13a2fb12d4080e6cc2f7191fd0f0660e458"
+      },
+      "cell_type": "code",
+      "source": "bike_sharing_models %>%\nlapply(predict, bike_share_task) %>%\nlapply(performance, measures = reg_ms) %>%\nlapply(round, 2) -> metrics_table",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "9593460489ded563dd339687a05943f3868b2799"
+      },
+      "cell_type": "code",
+      "source": "metrics_table",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "b8a571168e5c266290301e1b9fc5ea5db2d8183f"
+      },
+      "cell_type": "markdown",
+      "source": "Наилучшие результаты получены при использовании дерева ctree\n\nВыполним проверку качества модели на кросс-валидации:"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "5308fc1415a0271190f6d4740ad23acc3b19dce4"
+      },
+      "cell_type": "code",
+      "source": "set.seed(123, \"L'Ecuyer\") # При использовании параллельных вычислений необходимо выбирать алгоритм генерации СЧ \"L'Ecuyer\"\n\n# Определение количества доступных ядер процессора\nnum_cores <- parallel::detectCores()\n\n# Запуск параллельных вычислений\nparallelStartSocket(num_cores) # для Windows",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "cff5550c6fa519fde6eb0fdc4a37be5ebae52541"
+      },
+      "cell_type": "code",
+      "source": "my_bench <- bike_learners %>%\n  benchmark(tasks = bike_share_task,\n         resampling = bike_rdesc,\n         measures = append(list(timetrain), reg_ms))",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "76658ae0441ab3a2aea6ce41d742cef4c6018dc9"
+      },
+      "cell_type": "code",
+      "source": "# Остановка параллельных вычислений\nparallelStop()",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "d9bcbd9078f985c16c095b4d7e19b73c8d9b822e"
+      },
+      "cell_type": "code",
+      "source": "my_bench %>%\n  getBMRAggrPerformances(as.df = TRUE)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "18ee68fe8adfb7a40a92a3a0363b522e7c71f4c3"
+      },
+      "cell_type": "code",
+      "source": "my_bench %>%\n  getBMRAggrPerformances(as.df = TRUE) %>%\n  arrange(mape.test.mean) %>%\n  ggplot(aes(x = fct_inorder(learner.id),\n             y = mape.test.mean),\n        groups = (learner.id), colours= learner.id) +\n  geom_bar(stat = \"identity\") +\n  geom_line(aes(y = timetrain.test.mean, group = 1),\n            color = \"red\") +\n  scale_y_continuous(labels = scales::percent,\n                     sec.axis = sec_axis(~ . * 1000,\n                                         name = \"Время обучения, мс\")) +\n  labs(title = \"Compare model quality by MAPE metric and timetrain\",\n       x = \"Тип модели\", y = \"MAPE\") ",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "_uuid": "321f51cd8e78682880204c51dac52ce8a9403f5e"
+      },
+      "cell_type": "markdown",
+      "source": "#### Будем работать далее с моделью `h20.gbm`"
+    },
+    {
+      "metadata": {
+        "_uuid": "67c11ac119f8da7f4997034b5a68dd73f98f7912"
+      },
+      "cell_type": "markdown",
+      "source": "## Настройка гиперпараметров модели\n#### Посмотрим на список доступных гиперпараметров лучшей по качеству модели `h20.gbm`:"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "0eced3742f360dfd17827156e23ebb97a99c8364"
+      },
+      "cell_type": "code",
+      "source": "md <- bike_learners$h2o.gbm\ngetParamSet(md)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "280079ca4e3ccc256af77ef9601633adb071afc3"
+      },
+      "cell_type": "code",
+      "source": "# maxdepth, nresample, minsplit        \nps_rpart = makeParamSet(\n  makeIntegerParam(\"ntrees\", lower = 40, upper = 55)\n  ,makeIntegerParam(\"max_depth\", lower = 3, upper = 7))",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "2b87fef25e12e748830771dee94ee8686fd392fa"
+      },
+      "cell_type": "code",
+      "source": "ps_rpart",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "5bf3ed43c01ab82d52d3c9e13d49400f01ad630f"
+      },
+      "cell_type": "code",
+      "source": "# Инициализация генератора СЧ\nset.seed(123, \"L'Ecuyer\")\n\n# Выбор алгоритма оптимизации\ncontrol_rpart = makeTuneControlGenSA(budget = 200)\n\n# Выбор стратегии ресэмплинга\n#cv_rdesc = makeResampleDesc(\"CV\", iters = 5) # 10 блоков - точнее, но дольше\n\n# Оптимизация гиперпараметров\nparallelStartSocket(num_cores)\n\nres_rpart = tuneParams(md,\n                       measures = reg_ms,\n                       task = bike_share_task,\n                       control = control_rpart,\n                       resampling = bike_rdesc,\n                       par.set = ps_rpart,\n                       show.info = TRUE)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "6e8ca70398ee8ebc37faf5c9a2427a5c1ad250c5"
+      },
+      "cell_type": "code",
+      "source": "parallelStop()",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "6d10695d551c7f1ee7060146d3ab3bf23f46cc9a"
+      },
+      "cell_type": "code",
+      "source": "res_rpart",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "a6c74ac8ba3fc2ba8857cdb25f1938b5b3ef2bc2"
+      },
+      "cell_type": "code",
+      "source": "generateHyperParsEffectData(res_rpart) %>%\n  plotHyperParsEffect(x = \"max_depth\", y = \"mape.test.mean\",\n                      plot.type = \"line\",\n                      #z = \"minsplit\",\n                      facet = \"ntrees\")",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "dd1477c01b855a887a239fc3ce6c53b6f0050903"
+      },
+      "cell_type": "code",
+      "source": "generateHyperParsEffectData(res_rpart) %>%\n  plotHyperParsEffect(x = \"max_depth\", y = \"ntrees\",\n                      z = \"mape.test.mean\",\n                      plot.type = \"heatmap\",\n                      interpolate = \"regr.earth\",\n                      show.experiments = TRUE)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "_uuid": "09e998384fb4df7d4fd9f5b5c742eb49cddee07f"
+      },
+      "cell_type": "markdown",
+      "source": "## Построение финальной модели"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "86525bc43b86580c11c11df238822592b45baa32"
+      },
+      "cell_type": "code",
+      "source": "# Описание ученика\nopt_h20 <-  makeLearner(\"regr.h2o.gbm\"\n                                   , id = \"Model h20.gbm\",\n                                   par.vals = \n                                     list(max_depth = 7,\n                                          ntrees = 51))\n# Обучение модели\nopt_model <- mlr::train(opt_h20,\n                     task = bike_share_task,\n                     subset = rows_train)\n\n# Прогнозирование (на тестовой выборке)\npr_rpart_opt <-predict(opt_model, task = bike_share_task,\n                        subset = rows_test)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "df04ee125ac64129dae6ebc7df1fc9fce79c9964"
+      },
+      "cell_type": "code",
+      "source": "performance(pr_rpart_opt,\n            measures = reg_ms) %>%\n  round(4)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "a8e579bd9b260e6f2e5a22ebb0f877c5f2e3209e"
+      },
+      "cell_type": "code",
+      "source": "# Исходная модель\ngetLearnerModel(bike_sharing_models$h2o.gbm) %>%\n  plot(main = \"Исходное дерево решений\")",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "e9ba433cc64cb74da9e5ec06f8a84c1460449036"
+      },
+      "cell_type": "code",
+      "source": "# Оптимизированная модель\ngetLearnerModel(opt_model) %>%\n  plot(main = \"Оптимизированное дерево решений\")",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "f114efa905bb43275ce46f625d2e10b42a067609"
+      },
+      "cell_type": "code",
+      "source": "",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "9bd4c524e80daf06a1e6d9429d1b59d05085b37b"
+      },
+      "cell_type": "code",
+      "source": "",
+      "execution_count": null,
+      "outputs": []
+    }
+  ],
+  "metadata": {
+    "kernelspec": {
+      "display_name": "R",
+      "language": "R",
+      "name": "ir"
+    },
+    "language_info": {
+      "mimetype": "text/x-r-source",
+      "name": "R",
+      "pygments_lexer": "r",
+      "version": "3.4.2",
+      "file_extension": ".r",
+      "codemirror_mode": "r"
+    }
+  },
+  "nbformat": 4,
+  "nbformat_minor": 1
+}
